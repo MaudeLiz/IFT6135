@@ -1,10 +1,11 @@
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math, copy, time
 from torch.autograd import Variable
-
+import pdb #pdb.set_trace()
 
 # NOTE ==============================================
 #
@@ -248,32 +249,27 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
         self.init_out_layer_weights_uniform()
 
     def init_embedding_weights_uniform(self, init_range=0.1):
-        # TODO ========================
         nn.init.uniform_(self.word_embeddings.weight, -init_range, init_range)
 
     def init_reset_gate_weights_uniform(self):
-        # TODO ========================
         for i in range(self.num_layers):
             k = 1/math.sqrt(self.hidden_size)
             nn.init.uniform_(self.r[i].weight, -k, k)
-            nn.init.uniform_(self.r[i].biais, -k, k)
+            nn.init.uniform_(self.r[i].bias, -k, k)
 
     def init_forget_gate_weights_uniform(self):
-        # TODO ========================
         for i in range(self.num_layers):
             k = 1/math.sqrt(self.hidden_size)
             nn.init.uniform_(self.z[i].weight, -k, k)
-            nn.init.uniform_(self.z[i].biais, -k, k)
+            nn.init.uniform_(self.z[i].bias, -k, k)
 
     def init_memory_weights_uniform(self):
-        # TODO ========================
         for i in range(self.num_layers):
             k = 1/math.sqrt(self.hidden_size)
             nn.init.uniform_(self.h[i].weight, -k, k)
-            nn.init.uniform_(self.h[i].biais, -k, k)
+            nn.init.uniform_(self.h[i].bias, -k, k)
 
     def init_out_layer_weights_uniform(self):
-        # TODO ========================
         nn.init.uniform_(self.out_layer.weight, -0.1, 0.1)
         nn.init.zeros_(self.out_layer.bias)
 
@@ -283,7 +279,6 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
         (self.num_layers, self.batch_size, self.hidden_size)
         filled with zeros as the initial hidden states of the GRU.
         """
-        # TODO ========================
         initial_hidden = torch.zeros(self.num_layers, self.batch_size, self.hidden_size)
         return initial_hidden
 
@@ -317,31 +312,41 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
                   value of self.init_hidden will be used.
                         shape: (num_layers, batch_size, hidden_size)
         """
-        # TODO ========================
         if inputs.is_cuda:
             device = inputs.get_device()
         else:
             device = torch.device("cpu")
 
-        embed_out = self.words_embeddings(inputs) # shape (seq_len,batch_size,emb_size)
+        embed_out = self.word_embeddings(inputs) # shape (seq_len,batch_size,emb_size)
 
+        # Create a tensor to store outputs during the Forward
+        #logits = torch.zeros(self.seq_len, self.batch_size, self.vocab_size).to(device)
+        logits = []
+        pdb.set_trace()
         # For each time step
         for timestep in range(self.seq_len):
             # Apply dropout on the embedding result
             input_ = self.dropout(embed_out[timestep])
             # For each layer
             for layer in range(self.num_layers):
-                r = torch.sigmoid(self.r[layer](torch.cat([input_, hidden[layer]], 1)))
-                z = torch.sigmoid(self.z[layer](torch.cat([input_, hidden[layer]], 1)))
-                h = torch.tanh(self.h[layer](torch.cat([input_, torch.mul(r,hidden[layer])], 1)))
-                hidden[layer] = torch.tanh(torch.mul((1-z), hidden[layer]) + torch.mul(z,h))
+                out_r = torch.sigmoid(self.r[layer](torch.cat([input_, hidden[layer]], 1)))
+                out_z = torch.sigmoid(self.z[layer](torch.cat([input_, hidden[layer]], 1)))
+                # pdb.set_trace()
+                out_h = torch.tanh(self.h[layer](torch.cat([input_, torch.mul(out_r, hidden[layer])], 1)))
+                # hidden[layer] = torch.mul((1-out_z), hidden[layer]) + torch.mul(out_z,out_h)
+                hidden[layer] = out_h
                 input_ = self.dropout(hidden[layer])
+                print("layer ",layer)
+               
 
-            logits[timestep] = self.out_layer(input_)
-        return logits, hidden
+            #logits[timestep] = self.out_layer(input_)
+            logits += self.out_layer(input_)
+            print("timestep ", timestep)
+        out = torch.stack(logits, 0)
+        return out, hidden
+        #return logits, hidden
 
-
-    def generate(self, input, hidden, generated_seq_len):
+    def generate(self, inputz, hidden, generated_seq_len):
         """
         Generate a sample sequence from the GRU.
 
@@ -362,8 +367,28 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
             - Sampled sequences of tokens
                         shape: (generated_seq_len, batch_size)
         """
-        # TODO ========================
+        # Create a tensor to store outputs during the Forward
+        samples = torch.zeros(self.generated_seq_len, self.batch_size, self.vocab_size).to(device)
+
+
+        # For each time step
+        for timestep in range(self.seq_len):
+            embed_out = self.word_embeddings(inputz)   # shape (batch_size,emb_size)
+            # Apply dropout on the embedding result
+            input_ = self.dropout(embed_out)
+            # For each layer
+            for layer in range(self.num_layers):
+                r = torch.sigmoid(self.r[layer](torch.cat([input_, hidden[layer]], 1)))
+                z = torch.sigmoid(self.z[layer](torch.cat([input_, hidden[layer]], 1)))
+                h = torch.tanh(self.h[layer](torch.cat([input_, torch.mul(r,hidden[layer])], 1)))
+                hidden[layer] = torch.tanh(torch.mul((1-z), hidden[layer]) + torch.mul(z,h))
+                input_ = self.dropout(hidden[layer])
+
+            logits[timestep] = self.out_layer(input_)
+            inputz = logits[timestep]
+            sample = torch.argmax(inputz, dim= 2)
         return samples
+
 
 
 # Problem 2
@@ -425,252 +450,257 @@ and a linear layer followed by a softmax.
 
 
 
-# #----------------------------------------------------------------------------------
+#----------------------------------------------------------------------------------
 
-# class MultiHeadedAttention(nn.Module):
-#     def __init__(self, n_heads, n_units, dropout=0.1):
-#         """
-#         n_heads: the number of attention heads
-#         n_units: the number of input and output units
-#         dropout: probability of DROPPING units
-#         """
-#         super(MultiHeadedAttention, self).__init__()
-#         # This sets the size of the keys, values, and queries (self.d_k) to all
-#         # be equal to the number of output units divided by the number of heads.
-#         self.d_k = n_units // n_heads
-#         # This requires the number of n_heads to evenly divide n_units.
-#         assert n_units % n_heads == 0
-#         self.n_units = n_units
-#         self.n_heads = n_heads
-#         # TODO ========================
-#         # Create the layers below. self.linear should contain 3 linear
-#         # layers that compute the projection from n_units => n_heads x d_k
-#         # (one for each of query, key and value) plus an additional final layer
-#         # (4 in total)
+class MultiHeadedAttention(nn.Module):
+    def __init__(self, n_heads, n_units, dropout=0.1):
+        """
+        n_heads: the number of attention heads
+        n_units: the number of input and output units
+        dropout: probability of DROPPING units
+        """
+        super(MultiHeadedAttention, self).__init__()
+        # This sets the size of the keys, values, and queries (self.d_k) to all
+        # be equal to the number of output units divided by the number of heads.
+        self.d_k = n_units // n_heads
+        # This requires the number of n_heads to evenly divide n_units.
+        assert n_units % n_heads == 0
+        self.n_units = n_units
+        self.n_heads = n_heads
+        # TODO ========================
+        # Create the layers below. self.linear should contain 3 linear
+        # layers that compute the projection from n_units => n_heads x d_k
+        # (one for each of query, key and value) plus an additional final layer
+        # (4 in total)
 
-#         # Note: that parameters are initialized with Glorot initialization in
-#         # the make_model function below (so you don't need to implement this
-#         # yourself).
+        # Note: that parameters are initialized with Glorot initialization in
+        # the make_model function below (so you don't need to implement this
+        # yourself).
 
-#         # Note: the only Pytorch modules you are allowed to use are nn.Linear
-#         # and nn.Dropout. You can also use softmax, masked_fill and the "clones"
-#         # function we provide.
-#         self.linears =
-#         self.dropout =
+        # Note: the only Pytorch modules you are allowed to use are nn.Linear
+        # and nn.Dropout. You can also use softmax, masked_fill and the "clones"
+        # function we provide.
+    
+        # self.linears =
+        # self.dropout =
+        pass
 
-#     def attention(self, query, key, value, mask=None, dropout=None):
-#         # Implement scaled dot product attention
-#         # As described in the .tex, apply input masking to the softmax
-#         # generating the "attention values" (i.e. A_i in the .tex)
-#         # Also apply dropout to the attention values.
-#         # This method needs to compare query and keys first, then mask positions
-#         # if a mask is provided, normalize the scores, apply dropout and then
-#         # retrieve values, in this particular order.
-#         # When applying the mask, use values -1e9 for the masked positions.
-#         # The method returns the result of the attention operation as well as
-#         # the normalized scores after dropout.
-#         # B is the batch size, T is the sequence length, d_value is the size
-#         # of the key.value features
-#         # TODO ========================
-#         scores =
-#         if mask is not None:
-#             scores = scores.masked_fill()
-#         norm_scores =
-#         if dropout is not None:
-#             norm_scores =  # Tensor of shape B x T x T
-#         output = # Tensor of shape B x T x d_value
+    def attention(self, query, key, value, mask=None, dropout=None):
+        # Implement scaled dot product attention
+        # As described in the .tex, apply input masking to the softmax
+        # generating the "attention values" (i.e. A_i in the .tex)
+        # Also apply dropout to the attention values.
+        # This method needs to compare query and keys first, then mask positions
+        # if a mask is provided, normalize the scores, apply dropout and then
+        # retrieve values, in this particular order.
+        # When applying the mask, use values -1e9 for the masked positions.
+        # The method returns the result of the attention operation as well as
+        # the normalized scores after dropout.
+        # B is the batch size, T is the sequence length, d_value is the size
+        # of the key.value features
+        # TODO ========================
+        # scores =
+        # if mask is not None:
+        #     scores = scores.masked_fill()
+        # norm_scores =
+        # if dropout is not None:
+        #     norm_scores =  # Tensor of shape B x T x T
+        # output = # Tensor of shape B x T x d_value
 
-#         return output, norm_scores
-
-
-#     def forward(self, query, key, value, mask=None):
-#         # Implement the masked multi-head attention.
-#         # query, key, and value correspond to Q, K, and V in the latex, and
-#         # they all have size: (batch_size, seq_len, self.n_units)
-#         # mask has size: (batch_size, seq_len, seq_len)
-#         # This method should call the attention method above
-#         # TODO ========================
-#         # 1) Do all the linear projections in batch from n_units => n_heads x d_k
-
-#         # 2) Apply attention on all the projected vectors in batch.
-
-#         # 3) "Concat" using a view and apply a final linear.
+        # return output, norm_scores
+        pass
 
 
-#         return # size: (batch_size, seq_len, self.n_units)
+    def forward(self, query, key, value, mask=None):
+        # Implement the masked multi-head attention.
+        # query, key, and value correspond to Q, K, and V in the latex, and
+        # they all have size: (batch_size, seq_len, self.n_units)
+        # mask has size: (batch_size, seq_len, seq_len)
+        # This method should call the attention method above
+        # TODO ========================
+        # 1) Do all the linear projections in batch from n_units => n_heads x d_k
+
+        # 2) Apply attention on all the projected vectors in batch.
+
+        # 3) "Concat" using a view and apply a final linear.
 
 
-
-
-
-
-
-# #----------------------------------------------------------------------------------
-# # The encodings of elements of the input sequence
-
-# class WordEmbedding(nn.Module):
-#     def __init__(self, n_units, vocab):
-#         super(WordEmbedding, self).__init__()
-#         self.lut = nn.Embedding(vocab, n_units)
-#         self.n_units = n_units
-
-#     def forward(self, x):
-#         #print (x)
-#         return self.lut(x) * math.sqrt(self.n_units)
-
-
-# class PositionalEncoding(nn.Module):
-#     def __init__(self, n_units, dropout, max_len=5000):
-#         super(PositionalEncoding, self).__init__()
-#         self.dropout = nn.Dropout(p=dropout)
-
-#         # Compute the positional encodings once in log space.
-#         pe = torch.zeros(max_len, n_units)
-#         position = torch.arange(0, max_len).unsqueeze(1).float()
-#         div_term = torch.exp(torch.arange(0, n_units, 2).float() *
-#                              -(math.log(10000.0) / n_units))
-#         pe[:, 0::2] = torch.sin(position * div_term)
-#         pe[:, 1::2] = torch.cos(position * div_term)
-#         pe = pe.unsqueeze(0)
-#         self.register_buffer('pe', pe)
-
-#     def forward(self, x):
-#         x = x + Variable(self.pe[:, :x.size(1)],
-#                          requires_grad=False)
-#         return self.dropout(x)
+        return # size: (batch_size, seq_len, self.n_units)
 
 
 
-# #----------------------------------------------------------------------------------
-# # The TransformerBlock and the full Transformer
 
 
-# class TransformerBlock(nn.Module):
-#     def __init__(self, size, self_attn, feed_forward, dropout):
-#         super(TransformerBlock, self).__init__()
-#         self.size = size
-#         self.self_attn = self_attn
-#         self.feed_forward = feed_forward
-#         self.sublayer = clones(ResidualSkipConnectionWithLayerNorm(size, dropout), 2)
-
-#     def forward(self, x, mask):
-#         x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask)) # apply the self-attention
-#         return self.sublayer[1](x, self.feed_forward) # apply the position-wise MLP
 
 
-# class TransformerStack(nn.Module):
-#     """
-#     This will be called on the TransformerBlock (above) to create a stack.
-#     """
-#     def __init__(self, layer, n_blocks): # layer will be TransformerBlock (below)
-#         super(TransformerStack, self).__init__()
-#         self.layers = clones(layer, n_blocks)
-#         self.norm = LayerNorm(layer.size)
+#----------------------------------------------------------------------------------
+# The encodings of elements of the input sequence
 
-#     def forward(self, x, mask):
-#         for layer in self.layers:
-#             x = layer(x, mask)
-#         return self.norm(x)
+class WordEmbedding(nn.Module):
+    def __init__(self, n_units, vocab):
+        super(WordEmbedding, self).__init__()
+        self.lut = nn.Embedding(vocab, n_units)
+        self.n_units = n_units
 
-
-# class FullTransformer(nn.Module):
-#     def __init__(self, transformer_stack, embedding, n_units, vocab_size):
-#         super(FullTransformer, self).__init__()
-#         self.transformer_stack = transformer_stack
-#         self.embedding = embedding
-#         self.output_layer = nn.Linear(n_units, vocab_size)
-
-#     def forward(self, input_sequence, mask):
-#         embeddings = self.embedding(input_sequence)
-#         return F.log_softmax(self.output_layer(self.transformer_stack(embeddings, mask)), dim=-1)
+    def forward(self, x):
+        #print (x)
+        return self.lut(x) * math.sqrt(self.n_units)
 
 
-# def make_model(vocab_size, n_blocks=6,
-#                n_units=512, n_heads=16, dropout=0.1):
-#     "Helper: Construct a model from hyperparameters."
-#     c = copy.deepcopy
-#     attn = MultiHeadedAttention(n_heads, n_units)
-#     ff = MLP(n_units, dropout)
-#     position = PositionalEncoding(n_units, dropout)
-#     model = FullTransformer(
-#         transformer_stack=TransformerStack(TransformerBlock(n_units, c(attn), c(ff), dropout), n_blocks),
-#         embedding=nn.Sequential(WordEmbedding(n_units, vocab_size), c(position)),
-#         n_units=n_units,
-#         vocab_size=vocab_size
-#         )
+class PositionalEncoding(nn.Module):
+    def __init__(self, n_units, dropout, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
 
-#     # Initialize parameters with Glorot / fan_avg.
-#     for p in model.parameters():
-#         if p.dim() > 1:
-#             nn.init.xavier_uniform_(p)
-#     return model
+        # Compute the positional encodings once in log space.
+        pe = torch.zeros(max_len, n_units)
+        position = torch.arange(0, max_len).unsqueeze(1).float()
+        div_term = torch.exp(torch.arange(0, n_units, 2).float() *
+                             -(math.log(10000.0) / n_units))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+        self.register_buffer('pe', pe)
 
-
-# #----------------------------------------------------------------------------------
-# # Data processing
-
-# def subsequent_mask(size):
-#     """ helper function for creating the masks. """
-#     attn_shape = (1, size, size)
-#     subsequent_mask = np.triu(np.ones(attn_shape), k=1).astype('uint8')
-#     return torch.from_numpy(subsequent_mask) == 0
-
-# class Batch:
-#     "Object for holding a batch of data with mask during training."
-#     def __init__(self, x, pad=0):
-#         self.data = x
-#         self.mask = self.make_mask(self.data, pad)
-
-#     @staticmethod
-#     def make_mask(data, pad):
-#         "Create a mask to hide future words."
-#         mask = (data != pad).unsqueeze(-2)
-#         mask = mask & Variable(
-#             subsequent_mask(data.size(-1)).type_as(mask.data))
-#         return mask
+    def forward(self, x):
+        x = x + Variable(self.pe[:, :x.size(1)],
+                         requires_grad=False)
+        return self.dropout(x)
 
 
-# #----------------------------------------------------------------------------------
-# # Some standard modules
 
-# class LayerNorm(nn.Module):
-#     "layer normalization, as in: https://arxiv.org/abs/1607.06450"
-#     def __init__(self, features, eps=1e-6):
-#         super(LayerNorm, self).__init__()
-#         self.a_2 = nn.Parameter(torch.ones(features))
-#         self.b_2 = nn.Parameter(torch.zeros(features))
-#         self.eps = eps
-
-#     def forward(self, x):
-#         mean = x.mean(-1, keepdim=True)
-#         std = x.std(-1, keepdim=True)
-#         return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
+#----------------------------------------------------------------------------------
+# The TransformerBlock and the full Transformer
 
 
-# class ResidualSkipConnectionWithLayerNorm(nn.Module):
-#     """
-#     A residual connection followed by a layer norm.
-#     Note for code simplicity the norm is first as opposed to last.
-#     """
-#     def __init__(self, size, dropout):
-#         super(ResidualSkipConnectionWithLayerNorm, self).__init__()
-#         self.norm = LayerNorm(size)
-#         self.dropout = nn.Dropout(dropout)
+class TransformerBlock(nn.Module):
+    def __init__(self, size, self_attn, feed_forward, dropout):
+        super(TransformerBlock, self).__init__()
+        self.size = size
+        self.self_attn = self_attn
+        self.feed_forward = feed_forward
+        self.sublayer = clones(ResidualSkipConnectionWithLayerNorm(size, dropout), 2)
 
-#     def forward(self, x, sublayer):
-#         "Apply residual connection to any sublayer with the same size."
-#         return x + self.dropout(sublayer(self.norm(x)))
+    def forward(self, x, mask):
+        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask)) # apply the self-attention
+        return self.sublayer[1](x, self.feed_forward) # apply the position-wise MLP
 
 
-# class MLP(nn.Module):
-#     """
-#     This is just an MLP with 1 hidden layer
-#     """
-#     def __init__(self, n_units, dropout=0.1):
-#         super(MLP, self).__init__()
-#         self.w_1 = nn.Linear(n_units, 2048)
-#         self.w_2 = nn.Linear(2048, n_units)
-#         self.dropout = nn.Dropout(dropout)
+class TransformerStack(nn.Module):
+    """
+    This will be called on the TransformerBlock (above) to create a stack.
+    """
+    def __init__(self, layer, n_blocks): # layer will be TransformerBlock (below)
+        super(TransformerStack, self).__init__()
+        self.layers = clones(layer, n_blocks)
+        self.norm = LayerNorm(layer.size)
 
-#     def forward(self, x):
-#         return self.w_2(self.dropout(F.relu(self.w_1(x))))
+    def forward(self, x, mask):
+        for layer in self.layers:
+            x = layer(x, mask)
+        return self.norm(x)
+
+
+class FullTransformer(nn.Module):
+    def __init__(self, transformer_stack, embedding, n_units, vocab_size):
+        super(FullTransformer, self).__init__()
+        self.transformer_stack = transformer_stack
+        self.embedding = embedding
+        self.output_layer = nn.Linear(n_units, vocab_size)
+
+    def forward(self, input_sequence, mask):
+        embeddings = self.embedding(input_sequence)
+        return F.log_softmax(self.output_layer(self.transformer_stack(embeddings, mask)), dim=-1)
+
+
+def make_model(vocab_size, n_blocks=6,
+               n_units=512, n_heads=16, dropout=0.1):
+    "Helper: Construct a model from hyperparameters."
+    c = copy.deepcopy
+    attn = MultiHeadedAttention(n_heads, n_units)
+    ff = MLP(n_units, dropout)
+    position = PositionalEncoding(n_units, dropout)
+    model = FullTransformer(
+        transformer_stack=TransformerStack(TransformerBlock(n_units, c(attn), c(ff), dropout), n_blocks),
+        embedding=nn.Sequential(WordEmbedding(n_units, vocab_size), c(position)),
+        n_units=n_units,
+        vocab_size=vocab_size
+        )
+
+    # Initialize parameters with Glorot / fan_avg.
+    for p in model.parameters():
+        if p.dim() > 1:
+            nn.init.xavier_uniform_(p)
+    return model
+
+
+#----------------------------------------------------------------------------------
+# Data processing
+
+def subsequent_mask(size):
+    """ helper function for creating the masks. """
+    attn_shape = (1, size, size)
+    subsequent_mask = np.triu(np.ones(attn_shape), k=1).astype('uint8')
+    return torch.from_numpy(subsequent_mask) == 0
+
+class Batch:
+    "Object for holding a batch of data with mask during training."
+    def __init__(self, x, pad=0):
+        self.data = x
+        self.mask = self.make_mask(self.data, pad)
+
+    @staticmethod
+    def make_mask(data, pad):
+        "Create a mask to hide future words."
+        mask = (data != pad).unsqueeze(-2)
+        mask = mask & Variable(
+            subsequent_mask(data.size(-1)).type_as(mask.data))
+        return mask
+
+
+#----------------------------------------------------------------------------------
+# Some standard modules
+
+class LayerNorm(nn.Module):
+    "layer normalization, as in: https://arxiv.org/abs/1607.06450"
+    def __init__(self, features, eps=1e-6):
+        super(LayerNorm, self).__init__()
+        self.a_2 = nn.Parameter(torch.ones(features))
+        self.b_2 = nn.Parameter(torch.zeros(features))
+        self.eps = eps
+
+    def forward(self, x):
+        mean = x.mean(-1, keepdim=True)
+        std = x.std(-1, keepdim=True)
+        return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
+
+
+class ResidualSkipConnectionWithLayerNorm(nn.Module):
+    """
+    A residual connection followed by a layer norm.
+    Note for code simplicity the norm is first as opposed to last.
+    """
+    def __init__(self, size, dropout):
+        super(ResidualSkipConnectionWithLayerNorm, self).__init__()
+        self.norm = LayerNorm(size)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x, sublayer):
+        "Apply residual connection to any sublayer with the same size."
+        return x + self.dropout(sublayer(self.norm(x)))
+
+
+class MLP(nn.Module):
+    """
+    This is just an MLP with 1 hidden layer
+    """
+    def __init__(self, n_units, dropout=0.1):
+        super(MLP, self).__init__()
+        self.w_1 = nn.Linear(n_units, 2048)
+        self.w_2 = nn.Linear(2048, n_units)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        return self.w_2(self.dropout(F.relu(self.w_1(x))))
+
+

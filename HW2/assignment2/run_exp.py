@@ -1,4 +1,5 @@
-#!/bin/python
+#%%
+# #!/bin/python
 # coding: utf-8
 
 # Code outline/scaffold for
@@ -69,6 +70,7 @@ import torch.nn
 from torch.autograd import Variable
 import torch.nn as nn
 import numpy
+import pdb
 np = numpy
 
 # NOTE ==============================================
@@ -357,6 +359,7 @@ def run_epoch(model, data, is_train=False, lr=1.0):
     """
     One epoch of training/validation (depending on flag is_train).
     """
+    pdb.set_trace()
     if is_train:
         model.train()
     else:
@@ -370,6 +373,7 @@ def run_epoch(model, data, is_train=False, lr=1.0):
     iters = 0
     losses = []
 
+    print(model)
     # LOOP THROUGH MINIBATCHES
     for step, (x, y) in enumerate(ptb_iterator(data, model.batch_size, model.seq_len)):
         if args.model == 'TRANSFORMER':
@@ -382,6 +386,8 @@ def run_epoch(model, data, is_train=False, lr=1.0):
             model.zero_grad()
             hidden = repackage_hidden(hidden)
             outputs, hidden = model(inputs, hidden)
+
+        #pdb.set_trace()
 
         targets = torch.from_numpy(y.astype(np.int64)).transpose(0, 1).contiguous().to(device)#.cuda()
         tt = torch.squeeze(targets.view(-1, model.batch_size * model.seq_len))
@@ -426,6 +432,7 @@ print("\n########## Running Main Loop ##########################")
 train_ppls = []
 train_losses = []
 val_ppls = []
+
 val_losses = []
 best_val_so_far = np.inf
 times = []
@@ -493,3 +500,6 @@ np.save(lc_path, {'train_ppls':train_ppls,
 # To load these, run
 # >>> x = np.load(lc_path, allow_pickle=True)[()]
 # You will need these values for plotting learning curves
+
+
+# %%
