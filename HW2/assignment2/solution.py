@@ -1,4 +1,4 @@
-
+#%%
 
 import numpy as np
 import torch
@@ -321,40 +321,29 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
         embed_out = self.word_embeddings(inputs) # shape (seq_len,batch_size,emb_size)
 
         # Create a tensor to store outputs during the Forward
-        #logits = torch.zeros(self.seq_len, self.batch_size, self.vocab_size).to(device)
-        logits = []
-        pdb.set_trace()
+        logits = torch.zeros(self.seq_len, self.batch_size, self.vocab_size).to(device)
+
         # For each time step
         for timestep in range(self.seq_len):
             # Apply dropout on the embedding result
             input_ = self.dropout(embed_out[timestep])
             # For each layer
             for layer in range(self.num_layers):
-                my_h = hidden[layer]
-                out_r = torch.sigmoid(self.r[layer](torch.cat([input_, hidden[layer]], 1)))
-                out_z = torch.sigmoid(self.z[layer](torch.cat([input_, hidden[layer]], 1)))
-                print("shape hidden", hidden[layer].shape)
-                print("shape out_r", out_r.shape)
-                print("mul shape", torch.mul(out_r, hidden[layer]).shape)
-                # out_h = torch.tanh(self.h[layer](torch.cat([input_, torch.mul(out_r, hidden[layer])], 1)))
-                out_h = torch.tanh(self.h[layer](torch.cat([input_, torch.mul(out_r, my_h)], 1)))
-                # hidden[layer] = torch.mul((1-out_z), my_h) + torch.mul(out_z,out_h)
-                my_new_h = torch.mul((1-out_z), my_h) + torch.mul(out_z,out_h)
-                # my_new_h was hidden[layer]
-                # input_ = self.dropout(hidden[layer])
-                input_ = self.dropout(my_new_h)
-                hidden[layer] = my_new_h # not working-> use same list trick for hidden[layer]
-                print("layer ",layer)
-               
+                previous_h = hidden[layer].clone()
 
-            #logits[timestep] = self.out_layer(input_)
-            logits.append(self.out_layer(input_))
-            print("timestep ", timestep)
-        print("Minou")
-        out = torch.stack(logits)
-        print("Minou2")
-        return out, hidden
-        #return logits, hidden
+                out_r = torch.sigmoid(self.r[layer](torch.cat([input_, previous_h], 1)))
+                out_z = torch.sigmoid(self.z[layer](torch.cat([input_, previous_h], 1)))
+                out_h = torch.tanh(self.h[layer](torch.cat([input_, torch.mul(out_r, previous_h)], 1)))
+
+                new_h = torch.mul((1 - out_z), previous_h) + torch.mul(out_z, out_h)
+ 
+                input_ = self.dropout(new_h)
+                hidden[layer] = new_h 
+
+            logits[timestep] = self.out_layer(input_)
+            print(timestep)
+        # pdb.set_trace()
+        return logits, hidden
 
     def generate(self, inputz, hidden, generated_seq_len):
         """
@@ -377,26 +366,39 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
             - Sampled sequences of tokens
                         shape: (generated_seq_len, batch_size)
         """
+        if inputz.is_cuda:
+            device = inputz.get_device()
+        else:
+            device = torch.device("cpu")
         # Create a tensor to store outputs during the Forward
-        samples = torch.zeros(self.generated_seq_len, self.batch_size, self.vocab_size).to(device)
+        samples = torch.zeros(generated_seq_len, self.batch_size).to(device)
 
 
         # For each time step
-        for timestep in range(self.seq_len):
+        for timestep in range(generated_seq_len):
             embed_out = self.word_embeddings(inputz)   # shape (batch_size,emb_size)
+            # print("inputz.shape", inputz.type())
+            # print("embed_out.shape",embed_out.shape)
             # Apply dropout on the embedding result
             input_ = self.dropout(embed_out)
+            # print("input_", input_.shape)
             # For each layer
             for layer in range(self.num_layers):
+                # print("hidden[l]", hidden[layer].shape)
                 r = torch.sigmoid(self.r[layer](torch.cat([input_, hidden[layer]], 1)))
                 z = torch.sigmoid(self.z[layer](torch.cat([input_, hidden[layer]], 1)))
                 h = torch.tanh(self.h[layer](torch.cat([input_, torch.mul(r,hidden[layer])], 1)))
+                # print("h", h.shape)
+                
                 hidden[layer] = torch.tanh(torch.mul((1-z), hidden[layer]) + torch.mul(z,h))
+                # print("final h", hidden[layer].shape)
                 input_ = self.dropout(hidden[layer])
 
-            logits[timestep] = self.out_layer(input_)
-            inputz = logits[timestep]
-            sample = torch.argmax(inputz, dim= 2)
+            samples[timestep] = torch.argmax(input_, dim= 1)
+            # print("samples", samples.shape)
+            inputz = samples[timestep].type(torch.LongTensor)
+            # print("new inputz", inputz.type())
+        pdb.set_trace()
         return samples
 
 
@@ -513,17 +515,16 @@ class MultiHeadedAttention(nn.Module):
         # The method returns the result of the attention operation as well as
         # the normalized scores after dropout.
         # TODO ========================
-        d_k = query.size(-1) #change?
+        d_k = query.size(3) #change?
         scores = torch.matmul(query, key.T(-2,-1))/np.sqrt(d_k)
         if mask is not None:
-            scores = scores.masked_fill()
+            scores = scores.masked_fill(mask==0, -1e9)
         norm_scores = F.softmax(scores, dim= -1) #check which dimension exactly
         if dropout is not None:
             norm_scores =  dropout(norm_scores) # Tensor of shape B x T x T
         output = torch.matlmul(norm_scores, value) # Tensor of shape B x T x d_value
 
         return output, norm_scores
-        pass
 
 
     def forward(self, query, key, value, mask=None):
@@ -720,3 +721,6 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.w_2(self.dropout(F.relu(self.w_1(x))))
 
+
+
+# %%
