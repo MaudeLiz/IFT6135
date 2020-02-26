@@ -496,8 +496,15 @@ class MultiHeadedAttention(nn.Module):
 
     def attention(self, query, key, value, mask=None, dropout=None):
         # Implement scaled dot product attention
+        # The query, key, and value inputs will be of size
+        # batch_size x n_heads x seq_len x d_k
+        # (If making a single call to attention in your forward method)
+        # and mask (if not None) will be of size
+        # batch_size x n_heads x seq_len x seq_len
+
         # As described in the .tex, apply input masking to the softmax
         # generating the "attention values" (i.e. A_i in the .tex)
+
         # Also apply dropout to the attention values.
         # This method needs to compare query and keys first, then mask positions
         # if a mask is provided, normalize the scores, apply dropout and then
@@ -505,8 +512,6 @@ class MultiHeadedAttention(nn.Module):
         # When applying the mask, use values -1e9 for the masked positions.
         # The method returns the result of the attention operation as well as
         # the normalized scores after dropout.
-        # B is the batch size, T is the sequence length, d_value is the size
-        # of the key.value features
         # TODO ========================
         d_k = query.size(-1) #change?
         scores = torch.matmul(query, key.T(-2,-1))/np.sqrt(d_k)
@@ -531,6 +536,8 @@ class MultiHeadedAttention(nn.Module):
         # 1) Do all the linear projections in batch from n_units => n_heads x d_k
 
         # 2) Apply attention on all the projected vectors in batch.
+        # The query, key, value inputs to the attention method will be of size
+        # batch_size x n_heads x seq_len x d_k
 
         # 3) "Concat" using a view and apply a final linear.
 
