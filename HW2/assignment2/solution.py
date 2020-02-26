@@ -319,7 +319,6 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
             device = torch.device("cpu")
 
         embed_out = self.word_embeddings(inputs) # shape (seq_len,batch_size,emb_size)
-
         # Create a tensor to store outputs during the Forward
         logits = torch.zeros(self.seq_len, self.batch_size, self.vocab_size).to(device)
 
@@ -334,12 +333,10 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
                 out_r = torch.sigmoid(self.r[layer](torch.cat([input_, previous_h], 1)))
                 out_z = torch.sigmoid(self.z[layer](torch.cat([input_, previous_h], 1)))
                 out_h = torch.tanh(self.h[layer](torch.cat([input_, torch.mul(out_r, previous_h)], 1)))
-
                 new_h = torch.mul((1 - out_z), previous_h) + torch.mul(out_z, out_h)
  
                 input_ = self.dropout(new_h)
                 hidden[layer] = new_h 
-
             logits[timestep] = self.out_layer(input_)
             print(timestep)
         # pdb.set_trace()
@@ -370,37 +367,24 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
             device = inputz.get_device()
         else:
             device = torch.device("cpu")
-        # Create a tensor to store outputs during the Forward
+
         samples = torch.zeros(generated_seq_len, self.batch_size).to(device)
-
-
-        # For each time step
         for timestep in range(generated_seq_len):
-            embed_out = self.word_embeddings(inputz)   # shape (batch_size,emb_size)
-            # print("inputz.shape", inputz.type())
-            # print("embed_out.shape",embed_out.shape)
-            # Apply dropout on the embedding result
+            embed_out = self.word_embeddings(inputz)  # shape (batch_size,emb_size)
             input_ = self.dropout(embed_out)
-            # print("input_", input_.shape)
-            # For each layer
             for layer in range(self.num_layers):
-                # print("hidden[l]", hidden[layer].shape)
                 r = torch.sigmoid(self.r[layer](torch.cat([input_, hidden[layer]], 1)))
                 z = torch.sigmoid(self.z[layer](torch.cat([input_, hidden[layer]], 1)))
-                h = torch.tanh(self.h[layer](torch.cat([input_, torch.mul(r,hidden[layer])], 1)))
-                # print("h", h.shape)
-                
-                hidden[layer] = torch.tanh(torch.mul((1-z), hidden[layer]) + torch.mul(z,h))
-                # print("final h", hidden[layer].shape)
-                input_ = self.dropout(hidden[layer])
+                h = torch.tanh(self.h[layer](torch.cat([input_, torch.mul(r, hidden[layer])], 1)))
 
-            samples[timestep] = torch.argmax(input_, dim= 1)
-            # print("samples", samples.shape)
-            inputz = samples[timestep].type(torch.LongTensor)
-            # print("new inputz", inputz.type())
-        pdb.set_trace()
+                new_h = torch.tanh(torch.mul((1-z), hidden[layer]) + torch.mul(z,h))
+                input_ = self.dropout(new_h)
+                hidden[layer] = new_h
+                out = self.out_layer(input_)
+
+            samples[timestep] = torch.argmax(out, dim= 1)
+            inputz = samples[timestep].to(torch.long)
         return samples
-
 
 
 # Problem 2
