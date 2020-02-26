@@ -185,9 +185,25 @@ class RNN(nn.Module):
             - Sampled sequences of tokens
                         shape: (generated_seq_len, batch_size)
         """
-        # TODO ========================
-        return samples
+        if inputs.is_cuda:
+            device = inputs.get_device()
+        else:
+            device = torch.device("cpu")
 
+        samples = torch.zeros(generated_seq_len, self.batch_size).to(device)
+
+        for timestep in range(self.seq_len):
+            embed_out = self.embeddings(inputs)
+            input_ = self.dropout(embed_out)
+
+            for layer in range(self.num_layers):
+                hidden[layer] = torch.tanh(self.layers[layer](torch.cat([input_, hidden[layer]], 1)))
+                input_ = self.dropout(hidden[layer])
+
+            out = self.out_layer(input_)
+            samples[timestep] = torch.argmax(out,dim=1)
+            inputs = samples[timestep].to(torch.long)
+        return samples
 
 # Problem 1
 class GRU(nn.Module): # Implement a stacked GRU RNN
@@ -380,8 +396,8 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
                 new_h = torch.tanh(torch.mul((1-z), hidden[layer]) + torch.mul(z,h))
                 input_ = self.dropout(new_h)
                 hidden[layer] = new_h
-                out = self.out_layer(input_)
 
+            out = self.out_layer(input_)
             samples[timestep] = torch.argmax(out, dim= 1)
             inputz = samples[timestep].to(torch.long)
         return samples
@@ -500,14 +516,13 @@ class MultiHeadedAttention(nn.Module):
         # the normalized scores after dropout.
         # TODO ========================
         d_k = query.size(3) #change?
-        scores = torch.matmul(query, key.T(-2,-1))/np.sqrt(d_k)
+        scores = torch.matmul(query, key.transpose(2,3))/np.sqrt(d_k)
         if mask is not None:
             scores = scores.masked_fill(mask==0, -1e9)
         norm_scores = F.softmax(scores, dim= -1) #check which dimension exactly
         if dropout is not None:
             norm_scores =  dropout(norm_scores) # Tensor of shape B x T x T
-        output = torch.matlmul(norm_scores, value) # Tensor of shape B x T x d_value
-
+        output = torch.matmul(norm_scores, value) # Tensor of shape B x T x d_value
         return output, norm_scores
 
 
