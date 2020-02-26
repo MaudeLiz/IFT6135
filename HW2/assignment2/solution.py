@@ -1,4 +1,5 @@
 
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -329,20 +330,29 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
             input_ = self.dropout(embed_out[timestep])
             # For each layer
             for layer in range(self.num_layers):
+                my_h = hidden[layer]
                 out_r = torch.sigmoid(self.r[layer](torch.cat([input_, hidden[layer]], 1)))
                 out_z = torch.sigmoid(self.z[layer](torch.cat([input_, hidden[layer]], 1)))
-                # pdb.set_trace()
-                out_h = torch.tanh(self.h[layer](torch.cat([input_, torch.mul(out_r, hidden[layer])], 1)))
-                # hidden[layer] = torch.mul((1-out_z), hidden[layer]) + torch.mul(out_z,out_h)
-                hidden[layer] = out_h
-                input_ = self.dropout(hidden[layer])
+                print("shape hidden", hidden[layer].shape)
+                print("shape out_r", out_r.shape)
+                print("mul shape", torch.mul(out_r, hidden[layer]).shape)
+                # out_h = torch.tanh(self.h[layer](torch.cat([input_, torch.mul(out_r, hidden[layer])], 1)))
+                out_h = torch.tanh(self.h[layer](torch.cat([input_, torch.mul(out_r, my_h)], 1)))
+                # hidden[layer] = torch.mul((1-out_z), my_h) + torch.mul(out_z,out_h)
+                my_new_h = torch.mul((1-out_z), my_h) + torch.mul(out_z,out_h)
+                # my_new_h was hidden[layer]
+                # input_ = self.dropout(hidden[layer])
+                input_ = self.dropout(my_new_h)
+                hidden[layer] = my_new_h # not working-> use same list trick for hidden[layer]
                 print("layer ",layer)
                
 
             #logits[timestep] = self.out_layer(input_)
-            logits += self.out_layer(input_)
+            logits.append(self.out_layer(input_))
             print("timestep ", timestep)
-        out = torch.stack(logits, 0)
+        print("Minou")
+        out = torch.stack(logits)
+        print("Minou2")
         return out, hidden
         #return logits, hidden
 
@@ -481,9 +491,8 @@ class MultiHeadedAttention(nn.Module):
         # and nn.Dropout. You can also use softmax, masked_fill and the "clones"
         # function we provide.
     
-        # self.linears =
-        # self.dropout =
-        pass
+        self.linears = clones(nn.Linear(n_units, n_units), 4)
+        self.dropout = nn.Dropout(p=dropout)
 
     def attention(self, query, key, value, mask=None, dropout=None):
         # Implement scaled dot product attention
@@ -499,15 +508,16 @@ class MultiHeadedAttention(nn.Module):
         # B is the batch size, T is the sequence length, d_value is the size
         # of the key.value features
         # TODO ========================
-        # scores =
-        # if mask is not None:
-        #     scores = scores.masked_fill()
-        # norm_scores =
-        # if dropout is not None:
-        #     norm_scores =  # Tensor of shape B x T x T
-        # output = # Tensor of shape B x T x d_value
+        d_k = query.size(-1) #change?
+        scores = torch.matmul(query, key.T(-2,-1))/np.sqrt(d_k)
+        if mask is not None:
+            scores = scores.masked_fill()
+        norm_scores = F.softmax(scores, dim= -1) #check which dimension exactly
+        if dropout is not None:
+            norm_scores =  dropout(norm_scores) # Tensor of shape B x T x T
+        output = torch.matlmul(norm_scores, value) # Tensor of shape B x T x d_value
 
-        # return output, norm_scores
+        return output, norm_scores
         pass
 
 
@@ -702,5 +712,4 @@ class MLP(nn.Module):
 
     def forward(self, x):
         return self.w_2(self.dropout(F.relu(self.w_1(x))))
-
 
