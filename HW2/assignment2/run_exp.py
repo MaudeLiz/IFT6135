@@ -146,9 +146,14 @@ def set_seed(seed):
     # torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = True
 
+# allow to use : `args.hidden_size`, for example
 args = parser.parse_args()
+
+# allow to use : `argsdict['hidden_size']
 argsdict = args.__dict__
+
 argsdict['code_file'] = sys.argv[0]
+print(argsdict['code_file'])
 
 # Use the model, optimizer, and the flags passed to the script to make the
 # name for the experimental dir
@@ -359,7 +364,7 @@ def run_epoch(model, data, is_train=False, lr=1.0):
     """
     One epoch of training/validation (depending on flag is_train).
     """
-    pdb.set_trace()
+    # pdb.set_trace()
     if is_train:
         model.train()
     else:
@@ -373,7 +378,7 @@ def run_epoch(model, data, is_train=False, lr=1.0):
     iters = 0
     losses = []
 
-    print(model)
+    # print(model)
     # LOOP THROUGH MINIBATCHES
     for step, (x, y) in enumerate(ptb_iterator(data, model.batch_size, model.seq_len)):
         if args.model == 'TRANSFORMER':
@@ -456,7 +461,7 @@ for epoch in range(num_epochs):
 
     # RUN MODEL ON TRAINING DATA
     train_ppl, train_loss = run_epoch(model, train_data, True, lr)
-    pdb.set_trace()
+    # pdb.set_trace()
     # testing_samples = model.generate
 
     # RUN MODEL ON VALIDATION DATA

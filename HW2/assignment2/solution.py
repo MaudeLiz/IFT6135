@@ -354,7 +354,7 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
                 input_ = self.dropout(new_h)
                 hidden[layer] = new_h 
             logits[timestep] = self.out_layer(input_)
-            print(timestep)
+            # print(timestep)
         # pdb.set_trace()
         return logits, hidden
 
