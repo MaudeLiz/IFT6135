@@ -137,7 +137,7 @@ parser.add_argument('--evaluate', action='store_true',
 # which helps for reproducibility)
 parser.add_argument('--seed', type=int, default=1111,
                     help='random seed')
-
+callable
 def set_seed(seed):
     # random.seed(seed)
     np.random.seed(seed)
@@ -385,7 +385,10 @@ def run_epoch(model, data, is_train=False, lr=1.0):
             inputs = torch.from_numpy(x.astype(np.int64)).transpose(0, 1).contiguous().to(device)#.cuda()
             model.zero_grad()
             hidden = repackage_hidden(hidden)
+            testing_samples = model.generate(inputs[0], hidden, 10)
+            pdb.set_trace()
             outputs, hidden = model(inputs, hidden)
+
 
         #pdb.set_trace()
 
@@ -453,6 +456,8 @@ for epoch in range(num_epochs):
 
     # RUN MODEL ON TRAINING DATA
     train_ppl, train_loss = run_epoch(model, train_data, True, lr)
+    pdb.set_trace()
+    # testing_samples = model.generate
 
     # RUN MODEL ON VALIDATION DATA
     val_ppl, val_loss = run_epoch(model, valid_data)
