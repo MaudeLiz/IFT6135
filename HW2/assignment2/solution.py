@@ -515,14 +515,16 @@ class MultiHeadedAttention(nn.Module):
         # The method returns the result of the attention operation as well as
         # the normalized scores after dropout.
         # TODO ========================
-        d_k = query.size(3) #change?
-        scores = torch.matmul(query, key.transpose(2,3))/np.sqrt(d_k)
+        d_k = query.size(-1)
+        scores = torch.matmul(query, key.transpose(-2,-1))/np.sqrt(d_k)
         if mask is not None:
+            if len(mask.size()) == 3 and len(query.size()) == 4:
+                mask.unsqueeze(1)
             scores = scores.masked_fill(mask==0, -1e9)
-        norm_scores = F.softmax(scores, dim= -1) #check which dimension exactly
+        norm_scores = F.softmax(scores, dim= -1) 
         if dropout is not None:
-            norm_scores =  dropout(norm_scores) # Tensor of shape B x T x T
-        output = torch.matmul(norm_scores, value) # Tensor of shape B x T x d_value
+            norm_scores =  dropout(norm_scores) # Tensor of shape batch_size x n_heads x seq_len x seq_len
+        output = torch.matmul(norm_scores, value) # Tensor of shape batch_size x n_heads x seq_len x d_k
         return output, norm_scores
 
 
@@ -532,17 +534,33 @@ class MultiHeadedAttention(nn.Module):
         # they all have size: (batch_size, seq_len, self.n_units)
         # mask has size: (batch_size, seq_len, seq_len)
         # This method should call the attention method above
+        if mask is not None:
+            # Same mask applied to all n_heads heads.
+            mask = mask.unsqueeze(1)
         # TODO ========================
         # 1) Do all the linear projections in batch from n_units => n_heads x d_k
+        batchsize = query.size(0)
+        # qkv =[query, key, value]
+        # for i in range(3):
+        #     layer[i](qkv[i]).view(batchsize, -1, self.n_heads, self.d_k).transpose(1, 2)
+        # for layer, vector in zip(self.linears, (query, key, value)):
+        #     layer(vector).view(batchsize, -1, self.n_heads, self.d_k).transpose(1, 2)
+        query = self.linears[0](query).view(batchsize, -1, self.n_heads, self.d_k).transpose(1, 2) # test .contiguous()
+        key   = self.linears[1](key  ).view(batchsize, -1, self.n_heads, self.d_k).transpose(1, 2)
+        value = self.linears[2](value).view(batchsize, -1, self.n_heads, self.d_k).transpose(1, 2)
+        # Now q_size = [batch, n_head, seq_len, d_k]
 
         # 2) Apply attention on all the projected vectors in batch.
         # The query, key, value inputs to the attention method will be of size
         # batch_size x n_heads x seq_len x d_k
+        output, norm_scores = self.attention(query, key, value, mask=mask, dropout=self.dropout)
 
         # 3) "Concat" using a view and apply a final linear.
+        output = output.transpose(1,2).contiguous().view(batchsize, -1, self.n_heads*self.d_k)
+        final_layer = self.linears[3](output)
 
 
-        return # size: (batch_size, seq_len, self.n_units)
+        return final_layer # size: (batch_size, seq_len, self.n_units)
 
 
 
