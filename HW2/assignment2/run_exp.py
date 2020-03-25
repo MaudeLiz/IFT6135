@@ -93,7 +93,7 @@ parser = argparse.ArgumentParser(description='PyTorch Penn Treebank Language Mod
 parser.add_argument('--data', type=str, default='data',
                     help='location of the data corpus. We suggest you change the default\
                     here, rather than passing as an argument, to avoid long file paths.')
-parser.add_argument('--model', type=str, default='GRU',
+parser.add_argument('--model', type=str, default='RNN',
                     help='type of recurrent net (RNN, GRU, TRANSFORMER)')
 parser.add_argument('--optimizer', type=str, default='SGD_LR_SCHEDULE',
                     help='optimization algo to use; SGD, SGD_LR_SCHEDULE, ADAM')
@@ -391,15 +391,16 @@ def run_epoch(model, data, is_train=False, lr=1.0):
             model.zero_grad()
             hidden = repackage_hidden(hidden)
             # testing_samples = model.generate(inputs[0], hidden, 10)
-            # pdb.set_trace()
+            pdb.set_trace()
+            # print("INPUTS", inputs)
             outputs, hidden = model(inputs, hidden)
+            print("hidden shape", hidden.shape)
 
 
         #pdb.set_trace()
 
         targets = torch.from_numpy(y.astype(np.int64)).transpose(0, 1).contiguous().to(device)#.cuda()
         tt = torch.squeeze(targets.view(-1, model.batch_size * model.seq_len))
-
         # LOSS COMPUTATION
         # This line currently averages across all the sequences in a mini-batch
         # and all time-steps of the sequences.
@@ -407,12 +408,15 @@ def run_epoch(model, data, is_train=False, lr=1.0):
         # at each time-step separately. Hint: use the method retain_grad to keep
         # gradients for intermediate nodes of the computational graph.
         #
+
         loss = loss_fn(outputs.contiguous().view(-1, model.vocab_size), tt)
-        costs += loss.data.item() * model.seq_len
+        print("shape new outputs", outputs.contiguous().view(-1, model.vocab_size).shape)
+        costs += loss.data.item() * model.seq_len # add average loss per seq 
         losses.append(costs)
         iters += model.seq_len
         if args.debug:
-            print(step, loss)
+            print("step",step)
+            print("loss", loss)
         if is_train:  # Only update parameters if training
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
@@ -453,8 +457,9 @@ else:
 
 # MAIN LOOP
 for epoch in range(num_epochs):
+    pdb.set_trace()
     t0 = time.time()
-    print('\nEPOCH '+str(epoch)+' ------------------')
+    print('\nEPOCHXX '+str(epoch)+' ------------------')
     if args.optimizer == 'SGD_LR_SCHEDULE':
         lr_decay = lr_decay_base ** max(epoch - m_flat_lr, 0)
         lr = lr * lr_decay # decay lr if it is time

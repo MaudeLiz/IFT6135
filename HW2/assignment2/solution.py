@@ -156,6 +156,7 @@ class RNN(nn.Module):
                 # Calculate the hidden states
                 # And apply the activation function tanh on it
                 hidden[layer] = torch.tanh(self.layers[layer](torch.cat([input_, hidden[layer]], 1)))
+                print("hidden[l].shape",hidden[layer].shape )
                 # Apply dropout on this layer, but not for the recurrent units
                 input_ = self.dropout(hidden[layer])
             # Store the output of the time step
@@ -192,7 +193,8 @@ class RNN(nn.Module):
 
         samples = torch.zeros(generated_seq_len, self.batch_size).to(device)
 
-        for timestep in range(self.seq_len):
+        for timestep in range(generated_seq_len):
+            print("timestep", timestep)
             embed_out = self.embeddings(inputs)
             input_ = self.dropout(embed_out)
 
@@ -201,6 +203,7 @@ class RNN(nn.Module):
                 input_ = self.dropout(hidden[layer])
 
             out = self.out_layer(input_)
+            print("out", out)
             samples[timestep] = torch.argmax(out,dim=1)
             inputs = samples[timestep].to(torch.long)
         return samples
@@ -389,11 +392,18 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
             embed_out = self.word_embeddings(inputz)  # shape (batch_size,emb_size)
             input_ = self.dropout(embed_out)
             for layer in range(self.num_layers):
-                r = torch.sigmoid(self.r[layer](torch.cat([input_, hidden[layer]], 1)))
-                z = torch.sigmoid(self.z[layer](torch.cat([input_, hidden[layer]], 1)))
-                h = torch.tanh(self.h[layer](torch.cat([input_, torch.mul(r, hidden[layer])], 1)))
 
-                new_h = torch.tanh(torch.mul((1-z), hidden[layer]) + torch.mul(z,h))
+                # r = torch.sigmoid(self.r[layer](torch.cat([input_, hidden[layer]], 1)))
+                # z = torch.sigmoid(self.z[layer](torch.cat([input_, hidden[layer]], 1)))
+                # h = torch.tanh(self.h[layer](torch.cat([input_, torch.mul(r, hidden[layer])], 1)))
+
+                previous_h = hidden[layer].clone()
+
+                out_r = torch.sigmoid(self.r[layer](torch.cat([input_, previous_h], 1)))
+                out_z = torch.sigmoid(self.z[layer](torch.cat([input_, previous_h], 1)))
+                out_h = torch.tanh(self.h[layer](torch.cat([input_, torch.mul(out_r, previous_h)], 1)))
+                new_h = torch.mul((1 - out_z), previous_h) + torch.mul(out_z, out_h)
+                # new_h = torch.tanh(torch.mul((1-z), hidden[layer]) + torch.mul(z,h))
                 input_ = self.dropout(new_h)
                 hidden[layer] = new_h
 
