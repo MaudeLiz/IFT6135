@@ -71,7 +71,7 @@ class RNN(nn.Module):
         self.num_layers = num_layers
         self.embeddings = nn.Embedding(self.vocab_size,self.emb_size)
         self.keep_hidden_states= keep_hidden_states
-    
+        self.list_hidden_states = None
 
         # Create layers
         self.layers = nn.ModuleList()
@@ -86,8 +86,8 @@ class RNN(nn.Module):
 
         self.init_weights()
 
-        self.list_hidden_states = None
-        self.new_list_hidden_states = None
+        
+
 
 
     def init_weights(self):
@@ -147,28 +147,16 @@ class RNN(nn.Module):
         else:
             device = torch.device("cpu")
 
+        #List of hidden states at each timestep to compute gradient
         if self.keep_hidden_states==True:
-            self.new_list_hidden_states = []
-
-            # self.list_hidden_states = torch.empty([self.num_layers, self.seq_len, self.batch_size, self.hidden_size ])
-            # self.list_hidden_states.retain_grad()
             self.list_hidden_states = []
-            for i in range(self.num_layers):
-                self.list_hidden_states.append([])
             
         # Apply the Embedding layer on the input
         embed_out = self.embeddings(inputs)# shape (seq_len,batch_size,emb_size)
 
         # Create a tensor to store outputs during the Forward
         logits = torch.zeros(self.seq_len, self.batch_size, self.vocab_size).to(device)
-        # tester = torch.empty(self.num_layers, self.seq_len, self.batch_size, self.hidden_size).to(device)
-        tester = torch.zeros( self.num_layers,self.seq_len, self.batch_size, self.hidden_size)
-        # tester_lay1 = torch.zeros(self.seq_len, self.batch_size, self.hidden_size)
-        # tester_lay2 = torch.zeros(self.seq_len, self.batch_size, self.hidden_size)
-        # tester=tester.expand(self.seq_len,self.batch_size,self.hidden_size)
-        print("teste shape", tester[:, 0, :,:].shape)
-        
-        # tester[:][0][:][:]= hidden
+
         # For each time step
         for timestep in range(self.seq_len):
             # Apply dropout on the embedding result
@@ -178,40 +166,21 @@ class RNN(nn.Module):
                 # Calculate the hidden states
                 # And apply the activation function tanh on it
                 previous_h = hidden[layer].clone()
-
-                # new_h = torch.tanh(self.layers[layer](torch.cat([input_,previous_h], 1)))
-                # new_h.retain_grad()
-                # input_ = self.dropout(new_h)
-
-                # tester[layer, timestep,:,:] = new_h
-                # tester[layer, timestep,:,:].retain_grad()
-
                 new_h = torch.tanh(self.layers[layer](torch.cat([input_,previous_h], 1)))
+                
+                # Apply dropout on this layer, but not for the recurrent units
                 input_ = self.dropout(new_h)
                 
                 hidden[layer] = new_h
                 new_h.retain_grad()
-
-                # Apply dropout on this layer, but not for the recurrent units
-                # input_ = self.dropout(hidden[layer])
-
+                
                 if self.keep_hidden_states==True:
+                    self.list_hidden_states.append([])
                     self.list_hidden_states[layer].append(new_h)
-                    # self.list_hidden_states[layer][timestep] = hidden[layer]
-                    # self.list_hidden_states[layer].append(hidden[layer])
-            # print("HIDDEN=", hidden[1][0][0])
-            hidden.retain_grad()
-            hidden_t = hidden.clone()
-            
-            hidden_t.retain_grad()
 
-            self.new_list_hidden_states.append(hidden_t)
-           
             # Store the output of the time step
             logits[timestep] = self.out_layer(input_)
-
-            logits.retain_grad()
-            tester.retain_grad()
+       
         return logits, hidden
 
     # Problem 4.2
