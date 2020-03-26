@@ -70,6 +70,7 @@ class RNN(nn.Module):
         self.dp_keep_prob = dp_keep_prob
         self.num_layers = num_layers
         self.embeddings = nn.Embedding(self.vocab_size,self.emb_size)
+        
         self.keep_hidden_states= keep_hidden_states
         self.list_hidden_states = None
 
@@ -256,10 +257,10 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
         self.num_layers = num_layers
         self.dp_keep_prob = dp_keep_prob
         self.batch_size = batch_size
-        self.keep_hidden_states= keep_hidden_states
-        # TODO ========================
-
         self.word_embeddings = nn.Embedding(self.vocab_size,self.emb_size)
+        
+        self.keep_hidden_states= keep_hidden_states
+        self.list_hidden_states = None
 
         # Create "reset gate" layers
         self.r = nn.ModuleList()
@@ -288,7 +289,7 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
         self.init_memory_weights_uniform()
         self.init_out_layer_weights_uniform()
 
-        self.list_hidden_states = None
+        
 
     def init_embedding_weights_uniform(self, init_range=0.1):
         nn.init.uniform_(self.word_embeddings.weight, -init_range, init_range)
@@ -325,7 +326,6 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
         return initial_hidden
 
     def forward(self, inputs, hidden):
-        print("FORWARD")
         """ Compute the recurrent updates.
 
         Compute the forward pass, using nested python for loops.
@@ -361,13 +361,11 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
             device = torch.device("cpu")
 
         if self.keep_hidden_states==True:
-            self.list_hidden_states = torch.empty([self.num_layers, self.seq_len, self.batch_size, self.hidden_size ])
-            self.list_hidden_states.retain_grad()
-            # self.list_hidden_states = []
-            # for i in range(self.num_layers):
-            #     self.list_hidden_states.append([])
+            self.list_hidden_states = []
 
+        # Apply the Embedding layer on the input
         embed_out = self.word_embeddings(inputs) # shape (seq_len,batch_size,emb_size)
+        
         # Create a tensor to store outputs during the Forward
         logits = torch.zeros(self.seq_len, self.batch_size, self.vocab_size).to(device)
 
@@ -386,22 +384,16 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
  
                 input_ = self.dropout(new_h)
                 hidden[layer] = new_h 
-                hidden[layer].retain_grad()
-                # print("requires_grad",hidden[layer].requires_grad)
-                
+                new_h.retain_grad()
+        
 
                 if self.keep_hidden_states==True:
-                    # self.list_hidden_states[layer].append(hidden[layer])
-                    self.list_hidden_states[layer][timestep] = hidden[layer]
-                    # print("list require gra", self.list_hidden_states[layer][timestep].requires_grad)
+                    self.list_hidden_states.append([])
+                    self.list_hidden_states[layer].append(new_h)
 
             logits[timestep] = self.out_layer(input_)
-            hidden.retain_grad()
-            # self.list_hidden_states.retain_grad()
-            # print(timestep)
-        # pdb.set_trace()
-        print("list hidden", len(self.list_hidden_states[0]))
-        return logits, hidden, self.list_hidden_states
+
+        return logits, hidden
 
     def generate(self, inputz, hidden, generated_seq_len):
         """
